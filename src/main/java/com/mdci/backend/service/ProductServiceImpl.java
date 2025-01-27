@@ -4,9 +4,10 @@ import com.mdci.backend.dto.ProductDTO;
 import com.mdci.backend.model.Product;
 import com.mdci.backend.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -14,13 +15,12 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
 
-    public List<ProductDTO> getAllProducts() {
-        return productRepository.findAll()
-                .stream()
-                .map(this::convertToDTO)
-                .toList();
+    public Page<ProductDTO> getAllProducts(Pageable pageable) {
+        return productRepository.findAll(pageable)
+                .map(this::convertToDTO); // Convertir chaque entité en DTO
     }
 
+    @Cacheable("products")
     public ProductDTO getProductById(Long id) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Product not found"));

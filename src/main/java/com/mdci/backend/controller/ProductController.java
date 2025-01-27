@@ -3,11 +3,12 @@ package com.mdci.backend.controller;
 import com.mdci.backend.dto.ProductDTO;
 import com.mdci.backend.service.ProductService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/products")
@@ -16,10 +17,25 @@ public class ProductController {
 
     private final ProductService productService;
 
+    private final PaginationProperties paginationProperties;
+
     @GetMapping
     @PreAuthorize("hasRole('USER') or hasRole('ADMIN')") // Autorisé pour USER et ADMIN
-    public ResponseEntity<List<ProductDTO>> getProducts() {
-        return ResponseEntity.ok(productService.getAllProducts());
+    public ResponseEntity<Page<ProductDTO>> getProducts(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        // Appliquer les valeurs par défaut si aucun paramètre n'est fourni
+        int pageNumber = (page == null) ? paginationProperties.getDefaultPage() : page;
+        int pageSize = (size == null) ? paginationProperties.getDefaultSize() : size;
+
+        // Limiter la taille maximale de la page
+        if (pageSize > paginationProperties.getMaxSize()) {
+            pageSize = paginationProperties.getMaxSize();
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        return ResponseEntity.ok(productService.getAllProducts(pageable));
     }
 
     @GetMapping(value = "{id}")
