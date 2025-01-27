@@ -7,3 +7,8 @@ INSERT INTO Product (id, name, description, price) VALUES
 
 -- Mettre à jour l'auto-incrémentation
 ALTER TABLE product ALTER COLUMN id RESTART WITH 6;
+
+INSERT INTO USERS (ID, USERNAME, PASSWORD) VALUES (1, 'youmassa', '$2y$10$3xRmg7Tmbt/rOXh9./q1bObx6tBZaNvLLcNTlt8pfN/FL8kR5Z9nK');
+ALTER TABLE USERS ALTER COLUMN id RESTART WITH 2;
+
+INSERT INTO USER_ROLES (USER_ID, ROLE) VALUES (1, 'ADMIN');
