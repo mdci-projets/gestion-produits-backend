@@ -4,6 +4,7 @@ import com.mdci.backend.config.JwtUtils;
 import com.mdci.backend.dto.AuthRequest;
 import com.mdci.backend.dto.AuthResponse;
 import com.mdci.backend.dto.UserDTO;
+import com.mdci.backend.exceptions.ValidationException;
 import com.mdci.backend.model.Role;
 import com.mdci.backend.model.User;
 import com.mdci.backend.repository.UserRepository;
@@ -28,10 +29,10 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthResponse login(AuthRequest request) {
         User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new RuntimeException("Invalid username or password"));
+                .orElseThrow(() -> new ValidationException("Invalid username or password"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Invalid username or password");
+            throw new ValidationException("Invalid username or password");
         }
 
         String token = jwtUtils.generateToken(user.getUsername(), user.getRoles());

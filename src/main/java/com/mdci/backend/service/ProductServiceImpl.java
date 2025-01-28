@@ -1,6 +1,7 @@
 package com.mdci.backend.service;
 
 import com.mdci.backend.dto.ProductDTO;
+import com.mdci.backend.exceptions.ProductNotFoundException;
 import com.mdci.backend.model.Product;
 import com.mdci.backend.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +24,7 @@ public class ProductServiceImpl implements ProductService {
     @Cacheable("products")
     public ProductDTO getProductById(Long id) {
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> new ProductNotFoundException("Product with ID " + id + " not found"));
         return convertToDTO(product);
     }
 
@@ -35,7 +36,7 @@ public class ProductServiceImpl implements ProductService {
 
     public ProductDTO updateProduct(Long id, ProductDTO productDTO) {
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> new ProductNotFoundException("Product with ID " + id + " not found"));
         product.setName(productDTO.getName());
         product.setDescription(productDTO.getDescription());
         product.setPrice(productDTO.getPrice());

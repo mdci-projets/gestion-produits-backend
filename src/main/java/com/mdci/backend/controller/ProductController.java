@@ -2,6 +2,7 @@ package com.mdci.backend.controller;
 
 import com.mdci.backend.dto.ProductDTO;
 import com.mdci.backend.service.ProductService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -33,7 +34,6 @@ public class ProductController {
         if (pageSize > paginationProperties.getMaxSize()) {
             pageSize = paginationProperties.getMaxSize();
         }
-
         Pageable pageable = PageRequest.of(pageNumber, pageSize);
         return ResponseEntity.ok(productService.getAllProducts(pageable));
     }
@@ -46,13 +46,13 @@ public class ProductController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')") // Autorisé uniquement pour ADMIN
-    public ResponseEntity<ProductDTO> createProduct(@RequestBody ProductDTO productDTO) {
+    public ResponseEntity<ProductDTO> createProduct(@Valid @RequestBody ProductDTO productDTO) {
         return ResponseEntity.ok(productService.createProduct(productDTO));
     }
 
     @PutMapping(value = "{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ProductDTO> updateProduct(@PathVariable Long id, @RequestBody ProductDTO productDTO) {
+    public ResponseEntity<ProductDTO> updateProduct(@PathVariable Long id, @Valid @RequestBody ProductDTO productDTO) {
         return ResponseEntity.ok(productService.updateProduct(id, productDTO));
     }
 
