@@ -2,34 +2,37 @@ package com.mdci.backend.config;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mdci.backend.model.Role;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.util.Date;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Component
 public class JwtUtils {
 
     // Clé secrète pour signer le token (utilisez un mécanisme sécurisé pour gérer cette clé en production)
-    private final Key secretKey = Keys.secretKeyFor(SignatureAlgorithm.HS256);
+    private final Key secretKey;
 
     // Durée de validité des tokens (par exemple, 1 heure)
     private final long tokenValidity = 3600000;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // Permet d'injecter la clé secrète (utilisée dans les tests et l'application)
+    public JwtUtils(@Value("${jwt.secret:mySecretKeymySecretKeymySecretKeymySecretKey}") String secret) {
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
+    }
+
     // Générer un token JWT
-    public String generateToken(String username, Set<Role> roles) {
+    public String generateToken(String username, Set<String> roles) {
         return Jwts.builder()
                 .setSubject(username)
-                .claim("roles", roles.stream().map(Enum::name).collect(Collectors.toSet()))// Stocke les rôles comme une revendication
+                .claim("roles", roles)// Stocke les rôles comme une revendication
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + tokenValidity))
                 .signWith(secretKey)

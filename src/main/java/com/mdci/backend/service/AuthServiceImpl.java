@@ -35,7 +35,9 @@ public class AuthServiceImpl implements AuthService {
             throw new ValidationException("Invalid username or password");
         }
 
-        String token = jwtUtils.generateToken(user.getUsername(), user.getRoles());
+
+
+        String token = jwtUtils.generateToken(user.getUsername(), user.getRoles().stream().map(Enum::name).collect(Collectors.toSet()));
         return new AuthResponse(token);
     }
 
