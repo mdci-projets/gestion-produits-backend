@@ -8,8 +8,7 @@ import org.springframework.cache.annotation.EnableCaching;
 @EnableCaching
 public class BackendSpringBootApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(BackendSpringBootApplication.class, args);
-	}
-
+    public static void main(String[] args) {
+        SpringApplication.run(BackendSpringBootApplication.class, args);
+    }
 }

@@ -24,6 +24,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         String authorizationHeader = request.getHeader("Authorization");
+        // Vérifier si la requête est une connexion WebSocket
+        if (request.getRequestURI().startsWith("/ws")) {
+            System.out.println("📡 Token WebSocket Reçu via JwtAuthenticationFilter : " + authorizationHeader);
+            filterChain.doFilter(request, response); // Passer la requête WebSocket sans vérification
+            return;
+        }
 
         if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
             String token = authorizationHeader.substring(7); // Supprimer le préfixe "Bearer "

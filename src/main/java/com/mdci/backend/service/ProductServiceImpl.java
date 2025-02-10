@@ -5,16 +5,21 @@ import com.mdci.backend.exceptions.ProductNotFoundException;
 import com.mdci.backend.model.Product;
 import com.mdci.backend.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
+
+    private final SimpMessagingTemplate messagingTemplate;
 
     public Page<ProductDTO> getAllProducts(Pageable pageable) {
         return productRepository.findAll(pageable)
@@ -31,7 +36,14 @@ public class ProductServiceImpl implements ProductService {
     public ProductDTO createProduct(ProductDTO productDTO) {
         Product product = convertToEntity(productDTO);
         Product savedProduct = productRepository.save(product);
-        return convertToDTO(savedProduct);
+
+        ProductDTO savedProductDTO = convertToDTO(savedProduct);
+        // ENVOYER UNE NOTIFICATION STOMP AU FRONTEND
+        String message = "✅ Nouveau produit ajouté: " + savedProduct.getName();
+        messagingTemplate.convertAndSend("/topic/products", "{\"message\": \"" + message + "\"}");
+
+        log.info("📢 WebSocket: Notification envoyée - {}", message);
+        return savedProductDTO;
     }
 
     public ProductDTO updateProduct(Long id, ProductDTO productDTO) {

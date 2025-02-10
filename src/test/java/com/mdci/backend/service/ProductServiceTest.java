@@ -9,6 +9,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import com.mdci.backend.exceptions.ProductNotFoundException;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.util.Optional;
 
@@ -19,6 +20,9 @@ class ProductServiceTest {
 
     @Mock
     private ProductRepository productRepository;
+
+    @Mock
+    private SimpMessagingTemplate messagingTemplate;
 
     @InjectMocks
     private ProductServiceImpl productService;

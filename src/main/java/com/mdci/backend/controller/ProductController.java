@@ -1,5 +1,6 @@
 package com.mdci.backend.controller;
 
+import com.mdci.backend.dto.PagedResponse;
 import com.mdci.backend.dto.ProductDTO;
 import com.mdci.backend.service.ProductService;
 import jakarta.validation.Valid;
@@ -24,7 +25,7 @@ public class ProductController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('USER') or hasAuthority('ADMIN')") // Autorisé pour USER et ADMIN
-    public ResponseEntity<Page<ProductDTO>> getProducts(
+    public ResponseEntity<PagedResponse<ProductDTO>> getProducts(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size
     ) {
@@ -37,7 +38,8 @@ public class ProductController {
             pageSize = paginationProperties.getMaxSize();
         }
         Pageable pageable = PageRequest.of(pageNumber, pageSize);
-        return ResponseEntity.ok(productService.getAllProducts(pageable));
+        Page<ProductDTO> productPage = productService.getAllProducts(pageable);
+        return ResponseEntity.ok(new PagedResponse<>(productPage));
     }
 
     @GetMapping(value = "{id}")
