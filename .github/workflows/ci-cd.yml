@@ -77,6 +77,7 @@ jobs:
           name: application-jar
           path: target/*.jar
 
+  #  Build and push
   docker-build-and-push:
     name: Build and Push Docker Image
     needs: build-and-test
@@ -97,28 +98,102 @@ jobs:
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
       - name: Build Docker Image
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest .
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest .
 
       - name: Push Docker Image to Docker Hub
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest         
 
-#  deploy:
-#    name: Deploy Application
-#    needs: docker-build-and-push
-#    runs-on: ubuntu-latest
-#    if: github.ref == 'refs/heads/main'
-#
-#    steps:
-#      - name: SSH into Server and Deploy
-#        uses: appleboy/ssh-action@v0.1.6
-#        with:
-#          host: ${{ secrets.SSH_HOST }}
-#          username: ${{ secrets.SSH_USER }}
-#          key: ${{ secrets.SSH_PRIVATE_KEY }}
-#          script: |
-#            echo "Deploying new version..."
-#            docker pull ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
-#            docker stop spring-app || true
-#            docker rm spring-app || true
-#            docker run -d --name spring-app -p 8080:8080 ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
-#            echo "Application deployed successfully!"
+  deploy-ec2:
+    name: Deploy to AWS EC2
+    needs: docker-build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Check if EC2 Instance Exists
+        id: check-ec2
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=spring-boot-ec2" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text)
+          if [ -z "$INSTANCE_ID" ]; then
+            echo "INSTANCE_EXISTS=false" >> $GITHUB_ENV
+          else
+            echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+            echo "INSTANCE_EXISTS=true" >> $GITHUB_ENV
+          fi
+
+      - name: Start or Create EC2 Instance
+        if: env.INSTANCE_EXISTS == 'false'
+        run: |
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id ${{ secrets.AWS_AMI_ID }} \
+            --instance-type ${{ secrets.AWS_INSTANCE_TYPE }} \
+            --security-group-ids ${{ secrets.AWS_SECURITY_GROUP }} \
+            --subnet-id ${{ secrets.AWS_SUBNET_ID }} \
+            --key-name ${{ secrets.AWS_KEY_PAIR_NAME }} \
+            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=spring-boot-ec2}]' \
+            --query 'Instances[0].InstanceId' --output text)
+          
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+          echo "Created new EC2 instance: $INSTANCE_ID"
+
+      - name: Get EC2 Public IP
+        run: |
+          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+
+      - name: Open Port 8080 in Security Group
+        run: |
+          aws ec2 authorize-security-group-ingress --group-id ${{ secrets.AWS_SECURITY_GROUP }} --protocol tcp --port 8080 --cidr 0.0.0.0/0 || true
+
+      - name: Open Port 22 (SSH) in Security Group
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.AWS_SECURITY_GROUP }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr 0.0.0.0/0 || true   
+
+      - name: Setup SSH Key for EC2
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/aws-key.pem
+          chmod 600 ~/.ssh/aws-key.pem
+           # Vérification du format de la clé
+          if ! grep -q "PRIVATE KEY" ~/.ssh/aws-key.pem; then
+            echo "ERROR: SSH key is not correctly formatted!"
+            exit 1
+          fi
+          # Ajouter la clé du serveur pour éviter le prompt SSH
+          ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
+
+      - name: Wait for EC2 to be Ready
+        run: |
+          echo "Waiting for EC2 instance to be ready..."
+          sleep 60
+          while ! ssh -o StrictHostKeyChecking=no -i ~/.ssh/aws-key.pem ec2-user@$PUBLIC_IP "echo Instance Ready"; do
+            echo "Retrying in 10 seconds..."
+            sleep 10
+          done          
+
+      - name: Deploy Application on EC2
+        run: |
+          ssh -i ~/.ssh/aws-key.pem ec2-user@${{ env.PUBLIC_IP }} << 'EOF'
+            sudo yum update -y
+            sudo yum install -y docker
+            sudo service docker start
+            sudo usermod -aG docker ec2-user
+            newgrp docker
+            docker login -u "${{ secrets.DOCKER_USERNAME }}" -p "${{ secrets.DOCKER_PASSWORD }}"
+            docker pull ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
+            docker stop spring-app || true
+            docker rm spring-app || true
+            docker run -d --name spring-app -p 8080:8080 ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
+          EOF
