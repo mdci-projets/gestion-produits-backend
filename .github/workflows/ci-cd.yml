@@ -1,0 +1,124 @@
+name: CI/CD Pipeline for Spring Boot
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    name: Build and Test Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: maven
+
+      # Nettoyer les fichiers Maven existants (éviter des conflits)
+      - name: Clean Maven settings
+        run: rm -rf ~/.m2/settings.xml
+
+      # Configuration sécurisée des paramètres Maven
+      - name: Configure Maven Settings
+        run: |
+          echo "<settings>
+                  <servers>
+                    <server>
+                      <id>github</id>
+                      <username>${{ github.actor }}</username>
+                      <password>${{ secrets.GITHUB_TOKEN }}</password>
+                    </server>
+                  </servers>
+                </settings>" > ~/.m2/settings.xml
+
+      # Cache des dépendances Maven
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-
+
+      # Compilation et tests
+      - name: Build and Test with Maven
+        run: mvn clean verify
+
+      # Vérifier si le fichier JAR est généré
+      - name: Ensure JAR file is generated
+        run: |
+          if [ ! -f target/*.jar ]; then
+            echo "ERROR: JAR file not found in target/ directory"
+            exit 1
+          fi
+
+      # Archiver les résultats des tests
+      - name: Archive Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: target/surefire-reports
+
+      # Stocker le JAR pour la prochaine étape
+      - name: Save built JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-jar
+          path: target/*.jar
+
+  docker-build-and-push:
+    name: Build and Push Docker Image
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Download built JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: application-jar
+          path: target
+
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Build Docker Image
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest .
+
+      - name: Push Docker Image to Docker Hub
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
+
+#  deploy:
+#    name: Deploy Application
+#    needs: docker-build-and-push
+#    runs-on: ubuntu-latest
+#    if: github.ref == 'refs/heads/main'
+#
+#    steps:
+#      - name: SSH into Server and Deploy
+#        uses: appleboy/ssh-action@v0.1.6
+#        with:
+#          host: ${{ secrets.SSH_HOST }}
+#          username: ${{ secrets.SSH_USER }}
+#          key: ${{ secrets.SSH_PRIVATE_KEY }}
+#          script: |
+#            echo "Deploying new version..."
+#            docker pull ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
+#            docker stop spring-app || true
+#            docker rm spring-app || true
+#            docker run -d --name spring-app -p 8080:8080 ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
+#            echo "Application deployed successfully!"
