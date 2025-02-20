@@ -7,6 +7,8 @@ WORKDIR /app
 # Copier le fichier JAR dans l'image
 COPY target/*.jar app.jar
 
+ENV FRONTEND_URL=http://localhost:4300
+
 # Exposer le port de l'application
 EXPOSE 8080
 
