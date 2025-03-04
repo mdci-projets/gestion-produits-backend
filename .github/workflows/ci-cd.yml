@@ -118,10 +118,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Check if EC2 Instance Exists
+      - name: Check if EC2 Instance Exists and is Running
         id: check-ec2
         run: |
-          INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=spring-boot-ec2" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text)
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=gestion-produits-ec2" \
+                      "Name=instance-state-name,Values=running" \
+            --query "Reservations[*].Instances[*].InstanceId" \
+            --output text)
+
           if [ -z "$INSTANCE_ID" ]; then
             echo "INSTANCE_EXISTS=false" >> $GITHUB_ENV
           else
@@ -129,37 +134,45 @@ jobs:
             echo "INSTANCE_EXISTS=true" >> $GITHUB_ENV
           fi
 
-      - name: Start or Create EC2 Instance
+      - name: Start EC2 Instance if Not Running
         if: env.INSTANCE_EXISTS == 'false'
         run: |
-          INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id ${{ secrets.AWS_AMI_ID }} \
-            --instance-type ${{ secrets.AWS_INSTANCE_TYPE }} \
-            --security-group-ids ${{ secrets.AWS_SECURITY_GROUP }} \
-            --subnet-id ${{ secrets.AWS_SUBNET_ID }} \
-            --key-name ${{ secrets.AWS_KEY_PAIR_NAME }} \
-            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=spring-boot-ec2}]' \
-            --query 'Instances[0].InstanceId' --output text)
-          
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=gestion-produits-ec2" \
+            --query "Reservations[*].Instances[*].InstanceId" \
+            --output text)
+
+          if [ -z "$INSTANCE_ID" ]; then
+            echo "ERROR: No EC2 instance found with name gestion-produits-ec2"
+            exit 1
+          fi
+
+          aws ec2 start-instances --instance-ids $INSTANCE_ID
+          echo "EC2 instance started: $INSTANCE_ID"
+
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
-          echo "Created new EC2 instance: $INSTANCE_ID"
+
+      - name: Wait for EC2 Instance to be Ready
+        run: |
+          echo "Waiting for EC2 instance to be ready..."
+          sleep 60
+          STATUS="pending"
+
+          while [ "$STATUS" != "running" ]; do
+            STATUS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+              --query "Reservations[0].Instances[0].State.Name" --output text)
+            echo "Current status: $STATUS"
+            sleep 10
+          done
+
+          echo "EC2 instance is now running."
 
       - name: Get EC2 Public IP
         run: |
-          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+            --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
-
-      - name: Open Port 8080 in Security Group
-        run: |
-          aws ec2 authorize-security-group-ingress --group-id ${{ secrets.AWS_SECURITY_GROUP }} --protocol tcp --port 8080 --cidr 0.0.0.0/0 || true
-
-      - name: Open Port 22 (SSH) in Security Group
-        run: |
-          aws ec2 authorize-security-group-ingress \
-            --group-id ${{ secrets.AWS_SECURITY_GROUP }} \
-            --protocol tcp \
-            --port 22 \
-            --cidr 0.0.0.0/0 || true   
+          echo "EC2 instance public IP: $PUBLIC_IP"
 
       - name: Setup SSH Key for EC2
         run: |
@@ -167,7 +180,7 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" | sed 's/\r$//' > ~/.ssh/aws-key.pem
           chmod 600 ~/.ssh/aws-key.pem
 
-          # 🔥 Vérification du bon format de la clé
+          # Vérification du format de la clé
           if ! grep -q "PRIVATE KEY" ~/.ssh/aws-key.pem; then
             echo "ERROR: SSH key is not correctly formatted!"
             exit 1
@@ -175,48 +188,76 @@ jobs:
 
           ssh-keyscan -H ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
 
-      - name: Wait for EC2 to be Ready
+      - name: Wait for SSH to be Ready
         run: |
-          echo "Waiting for EC2 instance to be ready..."
-          sleep 60
-          while ! ssh -o StrictHostKeyChecking=no -i ~/.ssh/aws-key.pem ubuntu@$PUBLIC_IP "echo Instance Ready"; do
+          echo "Waiting for SSH to be ready..."
+          sleep 30
+          while ! ssh -o StrictHostKeyChecking=no -i ~/.ssh/aws-key.pem ubuntu@${{ env.PUBLIC_IP }} "echo SSH Ready"; do
             echo "Retrying in 10 seconds..."
             sleep 10
-          done   
+          done
+          echo "SSH connection established."
 
       - name: Deploy Application on EC2
         run: |
           ssh -i ~/.ssh/aws-key.pem ubuntu@${{ env.PUBLIC_IP }} << 'EOF'
-            set -e  # 🔥 Arrête le script en cas d'erreur
+            set -e  # Arrête le script en cas d'erreur
 
-            # ✅ Mettre à jour le système
+            echo "Updating system packages..."
             sudo apt update -y
             sudo apt upgrade -y
 
-            # ✅ Installer Docker (si non installé)
+            echo "Checking Docker installation..."
             if ! command -v docker &> /dev/null; then
+              echo "Installing Docker..."
               sudo apt install -y docker.io
               sudo systemctl start docker
               sudo systemctl enable docker
               sudo usermod -aG docker ubuntu
+              sudo chown ubuntu:docker /var/run/docker.sock
+              sudo chmod 666 /var/run/docker.sock
             fi
 
-            # ✅ Ajouter l'utilisateur actuel au groupe docker et recharger
-            newgrp docker || true
+            echo "Ensuring Docker is running..."
+            sudo systemctl restart docker
+            docker --version || { echo "ERROR: Docker is not installed correctly!"; exit 1; }
 
-            # ✅ Vérifier que Docker fonctionne
-            docker --version || { echo "ERROR: Docker n'est pas installé !"; exit 1; }
+            echo "Logging into Docker Hub..."
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-            # ✅ Se connecter à Docker Hub
-            docker login -u "${{ secrets.DOCKER_USERNAME }}" -p "${{ secrets.DOCKER_PASSWORD }}"
-
-            # ✅ Déploiement du conteneur
+            echo "Pulling the latest application image..."
             docker pull ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
+
+            echo "Stopping and removing old containers..."
             docker stop spring-app || true
             docker rm spring-app || true
-            docker run -d --name spring-app -p 8080:8080 -e FRONTEND_URL=${{ secrets.FRONTEND_URL }} ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
+
+            echo "Deploying new application container..."
+            docker run -d --name spring-app -p 8080:8080 \
+              -e FRONTEND_URL=${{ secrets.FRONTEND_URL }} \
+              ${{ secrets.DOCKER_USERNAME }}/spring-boot-app:latest
+
+            echo "Application successfully deployed on EC2!"
           EOF
-          
+
+      - name: Restart Nginx if EC2 was already running
+        if: env.INSTANCE_EXISTS == 'true'
+        run: |
+          ssh -i ~/.ssh/aws-key.pem ubuntu@${{ env.PUBLIC_IP }} "sudo systemctl restart nginx"
+          echo "Nginx restarted successfully!"
+
+      - name: Start Nginx if EC2 was just started
+        if: env.INSTANCE_EXISTS == 'false'
+        run: |
+          ssh -i ~/.ssh/aws-key.pem ubuntu@${{ env.PUBLIC_IP }} "sudo systemctl start nginx"
+          echo "Nginx started successfully!"
+
+      - name: Schedule EC2 Shutdown in 1 Hour
+        run: |
+          echo "Scheduling EC2 instance shutdown in 1 hour..."
+          aws ec2 stop-instances --instance-ids $INSTANCE_ID --no-cli-pager --region ${{ secrets.AWS_REGION }} --dry-run || aws ec2 stop-instances --instance-ids $INSTANCE_ID --region ${{ secrets.AWS_REGION }} --output text
+          echo "EC2 instance will be stopped in 1 hour."      
+
   deploy-frontend:
     name: Deploy Frontend to GitHub Pages
     needs: deploy-ec2
@@ -229,29 +270,6 @@ jobs:
           repository: ${{ secrets.FRONTEND_REPO }} # 🔥 Dépôt du frontend
           token: ${{ secrets.DEV_ACCESS_TOKEN }}
 
-      - name: 🔑 Se Connecter à AWS
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: 🔍 Récupérer l'IP Publique du Backend (EC2)
-        run: |
-          BACKEND_URL=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=spring-boot-ec2" "Name=instance-state-name,Values=running" \
-            --query "Reservations[0].Instances[0].PublicIpAddress" \
-            --output text)
-        
-          echo "BACKEND_URL=http://$BACKEND_URL:8080" >> $GITHUB_ENV
-          echo "✅ URL du Backend : http://$BACKEND_URL:8080"
-
-      - name: 🔄 Injecter l'URL du Backend dans `config.json`
-        run: |
-          jq '.productsApiUrl = env.BACKEND_URL' public/assets/config.json > public/assets/config_tmp.json
-          mv public/assets/config_tmp.json public/assets/config.json
-          echo "✅ URL du Backend injectée dans config.json"
-
       - name: 🏗️ Installer Node.js
         uses: actions/setup-node@v4
         with:
@@ -261,13 +279,13 @@ jobs:
         run: npm ci
 
       - name: 🏗️ Construire l'Application Angular
-        run: npm run build -- --configuration=production
+        run: npm run build -- --configuration=production --base-href /gestion-produits-angular/
 
       - name: 🚀 Déployer le Frontend sur GitHub Pages (dépôt frontend)
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           repository-name: ${{ secrets.FRONTEND_REPO }} # 🔥 Dépôt du frontend
           branch: gh-pages
-          folder: dist/fronted-angular/browser
+          folder: dist/gestion-produits-angular/browser
           token: ${{ secrets.DEV_ACCESS_TOKEN }} # 🔥 Token pour push sur le dépôt frontend
           clean: true
