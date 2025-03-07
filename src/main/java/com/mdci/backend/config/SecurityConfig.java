@@ -41,7 +41,14 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Utilisation correcte de la méthode
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
+                        .requestMatchers(
+                                "/h2-console/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**",
+                                "/swagger-resources/**",
+                                "/api-docs/**")
+                        .permitAll()
                         .requestMatchers("/ws/**", "/ws/info/**").permitAll() // ✅ Autorise WebSockets
                         .anyRequest().authenticated()
                 )
