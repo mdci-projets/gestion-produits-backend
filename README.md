@@ -138,13 +138,13 @@ Une fois l’application lancée, Swagger UI est disponible ici : 👉 Swagger U
 
 ### 📌 **Variables d'environnement**
 Dans `application.properties` :
-server.port=8080
-spring.datasource.url=jdbc:h2:mem:testdb 
-spring.datasource.username=sa 
-spring.datasource.password= 
-spring.datasource.driverClassName=org.h2.Driver 
-spring.jpa.databa[main](src%2Fmain)se-platform=org.hibernate.dialect.H2Dialect 
-spring.h2.console.enabled=true
+**server.port=8080**
+**spring.datasource.url=jdbc:h2:mem:testdb**
+**spring.datasource.username=sa**
+**spring.datasource.password=**
+**spring.datasource.driverClassName=org.h2.Driver**
+**spring.jpa.databa[main](src%2Fmain)se-platform=org.hibernate.dialect.H2Dialect**
+**spring.h2.console.enabled=true**
 
 JWT
 jwt.secret=mySecretKeymySecretKeymySecretKeymySecretKey 

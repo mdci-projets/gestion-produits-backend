@@ -255,8 +255,12 @@ jobs:
       - name: Schedule EC2 Shutdown in 1 Hour
         run: |
           echo "Scheduling EC2 instance shutdown in 1 hour..."
-          aws ec2 stop-instances --instance-ids $INSTANCE_ID --no-cli-pager --region ${{ secrets.AWS_REGION }} --dry-run || aws ec2 stop-instances --instance-ids $INSTANCE_ID --region ${{ secrets.AWS_REGION }} --output text
-          echo "EC2 instance will be stopped in 1 hour."      
+          ssh -i ~/.ssh/aws-key.pem ubuntu@${{ env.PUBLIC_IP }} << 'EOF'
+            sudo apt install -y at
+            sudo systemctl enable --now atd  # S'assurer que le service atd est actif
+            echo "aws ec2 stop-instances --instance-ids $INSTANCE_ID --region ${{ secrets.AWS_REGION }}" | at now + 1 hour
+          EOF
+          echo "EC2 instance will be stopped in 1 hour."
 
   deploy-frontend:
     name: Deploy Frontend to GitHub Pages
