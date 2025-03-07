@@ -122,6 +122,17 @@ curl -X GET http://localhost:8080/api/products -H "Authorization: Bearer <TOKEN>
 ```
 
 ---
+## 📖 Utilisation de Swagger
+Une fois l’application lancée, Swagger UI est disponible ici : 👉 Swagger UI
+
+
+### 🔐 Ajouter un Token JWT dans Swagger
+
+1. **Allez sur Swagger UI (http://localhost:8080/swagger-ui/index.html)**
+2. **Cliquez sur Authorize (en haut à droite)**
+3. **Entrez votre token JWT au format :**
+
+---
 
 ## 🛠️ **Configuration**
 
@@ -167,4 +178,5 @@ MIT License © 2025 **Youssef Massaoudi**
 - ✅ **JWT Authentication**
 - ✅ **Spring Data JPA**
 - ✅ **Docker**
+- ✅ **Swagger**
 - ✅ **GitHub Actions**
