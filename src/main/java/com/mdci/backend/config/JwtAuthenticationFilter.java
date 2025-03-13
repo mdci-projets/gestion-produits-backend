@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -16,6 +17,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Component
+@Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtUtils jwtUtils;
     public JwtAuthenticationFilter(JwtUtils jwtUtils) {
@@ -26,7 +28,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String authorizationHeader = request.getHeader("Authorization");
         // Vérifier si la requête est une connexion WebSocket
         if (request.getRequestURI().startsWith("/ws")) {
-            System.out.println("📡 Token WebSocket Reçu via JwtAuthenticationFilter : " + authorizationHeader);
             filterChain.doFilter(request, response); // Passer la requête WebSocket sans vérification
             return;
         }

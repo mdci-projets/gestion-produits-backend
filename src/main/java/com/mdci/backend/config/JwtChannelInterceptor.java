@@ -28,11 +28,14 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
         String authHeader = accessor.getFirstNativeHeader("Authorization");
-        String queryString = accessor.getSessionAttributes() != null ? (String) accessor.getSessionAttributes().get("queryString") : null;
 
-        // ✅ Vérifier si le token est dans l'URL WebSocket
-        if (authHeader == null && queryString != null && queryString.contains("token=")) {
-            authHeader = "Bearer " + queryString.split("token=")[1].split("&")[0];
+        // 🔍 Vérifier si le token est dans les sessions WebSocket (récupéré par `WebSocketHandshakeInterceptor`)
+        if (authHeader == null && accessor.getSessionAttributes() != null) {
+            String token = (String) accessor.getSessionAttributes().get("token");
+
+            if (token != null) {
+                authHeader = "Bearer " + token;
+            }
         }
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
@@ -41,7 +44,7 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
             if (auth != null) {
                 SecurityContextHolder.getContext().setAuthentication(auth);
                 accessor.setUser(auth);
-                log.info("✅ Utilisateur authentifié via WebSocket: {}", auth.getName());
+                log.info("✅ Utilisateur WebSocket authentifié: {}", auth.getName());
             } else {
                 log.warn("❌ Token JWT invalide !");
             }
@@ -57,15 +60,17 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
             String username = jwtUtils.extractUsername(token);
             Set<String> roles = jwtUtils.extractRoles(token);
 
-            // Convertir les rôles en SimpleGrantedAuthority
-            List<SimpleGrantedAuthority> authorities = roles.stream()
-                    .map(SimpleGrantedAuthority::new)
-                    .toList();
-            return new UsernamePasswordAuthenticationToken(username, null, authorities);
+            if (username != null && !roles.isEmpty()) {
+                List<SimpleGrantedAuthority> authorities = roles.stream()
+                        .map(SimpleGrantedAuthority::new)
+                        .toList();
+                return new UsernamePasswordAuthenticationToken(username, null, authorities);
+            } else {
+                log.warn("⚠️ Token JWT sans rôle ou utilisateur !");
+            }
         } else {
             log.warn("❌ Token JWT invalide !");
         }
         return null;
     }
-
 }

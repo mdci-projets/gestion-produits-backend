@@ -1,5 +1,6 @@
 package com.mdci.backend.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
@@ -10,6 +11,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 
 @Configuration
 @EnableWebSocketMessageBroker // 🔥 Active STOMP WebSocket
+@Slf4j
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final JwtChannelInterceptor jwtChannelInterceptor;
@@ -29,9 +31,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws") // 🔥 Endpoint WebSocket pour Angular
-                .setAllowedOriginPatterns(frontendUrl) // 🔥 Autoriser toutes les origines
-                .withSockJS(); // 🔥 Activer SockJS pour compatibilité
+        log.info("🛠 WebSocket STOMP enregistré : /ws");
+        registry.addEndpoint("/ws")
+                .setAllowedOriginPatterns(frontendUrl)
+                .addInterceptors(new WebSocketHandshakeInterceptor())
+                .withSockJS();
     }
 
     @Override
@@ -39,4 +43,3 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registration.interceptors(jwtChannelInterceptor);
     }
 }
-
